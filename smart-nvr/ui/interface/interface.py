@@ -582,9 +582,9 @@ def create_ui():
 
             # Tab 3: Auto-Route Rules
             with gr.TabItem("Auto-Route Events") as auto_route_tab:
-                scene_choices = get_scene_choices()
+                scene_choices = get_scene_choices() if show_scenescape_source else []
                 default_scene_id = scene_choices[0][1] if scene_choices else None
-                region_choices = get_region_choices(default_scene_id)
+                region_choices = get_region_choices(default_scene_id) if show_scenescape_source else []
                 default_region_id = region_choices[0][1] if region_choices else None
 
                 with gr.Row():

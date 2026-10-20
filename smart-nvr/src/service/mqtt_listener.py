@@ -201,8 +201,11 @@ def _extract_latest_region_entered_time(payload: Dict[str, Any], region_id: str)
             continue
 
         region_entries: List[Dict[str, Any]] = []
-        if region_id and isinstance(regions.get(region_id), dict):
-            region_entries.append(regions.get(region_id))
+        if region_id:
+            region_entry = regions.get(region_id)
+            if not isinstance(region_entry, dict):
+                continue
+            region_entries.append(region_entry)
         else:
             for region_info in regions.values():
                 if isinstance(region_info, dict):
@@ -262,8 +265,11 @@ def _extract_max_dwell_by_label(payload: Dict[str, Any], region_id: str) -> Dict
             continue
 
         region_entries: List[Dict[str, Any]] = []
-        if region_id and isinstance(regions.get(region_id), dict):
-            region_entries.append(regions.get(region_id))
+        if region_id:
+            region_entry = regions.get(region_id)
+            if not isinstance(region_entry, dict):
+                continue
+            region_entries.append(region_entry)
         else:
             for region_info in regions.values():
                 if isinstance(region_info, dict):

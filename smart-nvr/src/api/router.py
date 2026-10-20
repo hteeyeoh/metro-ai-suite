@@ -15,6 +15,7 @@ from api.endpoints.brokers_api import broker_router
 from api.endpoints.vss_api import vss_router
 from service.vms_service import VmsService
 from service import redis_store
+from model.rule import Rule
 import asyncio
 import requests
 import logging
@@ -143,22 +144,6 @@ async def get_search_responses(request: Request):
     except Exception as e:
         logger.error("Failed to fetch search responses: %s", e, exc_info=True)
         return {"error": "Failed to fetch search responses. Please try again later."}
-
-
-class Rule(BaseModel):
-    id: str
-    label: str
-    action: str
-    camera: str | None = None
-    source: str | None = None
-    count: int | None = None
-    region_id: str | None = None
-    region_name: str | None = None
-    scene_id: str | None = None
-    region_thresholds: Dict[str, int] | None = None
-    event_type: str | None = None
-    duration_seconds: int | None = None
-    near_miss_distance_m: float | None = None
 
 
 @router.post("/rules/")

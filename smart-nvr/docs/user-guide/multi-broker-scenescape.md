@@ -64,8 +64,8 @@ brokers:
 | `id` | ✅ | — | Unique identifier. Must match the Frigate camera name prefix (e.g. `si1` → `si1-camera*`). |
 | `name` | ✅ | — | Human-readable label. |
 | `host` | ✅ | — | MQTT broker IP address. |
-| `camera_topic` | At least one of `camera_topic`/`region_topic` | — | MQTT topic for camera-stream events. Each topic set on the broker gets its own dedicated MQTT connection. |
-| `region_topic` | At least one of `camera_topic`/`region_topic` | — | MQTT topic for region-stream events. |
+| `camera_topic` | ✅ | — | MQTT topic for camera-stream events. |
+| `region_topic` | ✅ | — | MQTT topic for region-stream events. |
 | `port` | — | `1883` | MQTT broker port. |
 | `type` | — | `scenescape` | Event type. Always `scenescape` for SI nodes. |
 | `use_tls` | — | `true` | Enable TLS. Set to `false` for plain MQTT brokers. |
@@ -179,7 +179,8 @@ curl -X POST $BASE/brokers/ \
     "id": "si3",
     "name": "Smart Intersection 3",
     "host": "<si3_mqtt_ip>",
-    "topic": "scenescape/data/camera/#",
+    "camera_topic": "scenescape/data/camera/#",
+    "region_topic": "scenescape/event/region/+/+/+",
     "rtsp_host": "<si3_rtsp_ip>",
     "rtsp_port": 8557
   }'
@@ -191,7 +192,8 @@ curl -X PUT $BASE/brokers/si3 \
     "id": "si3",
     "name": "SI 3 updated",
     "host": "<si3_ip_updated>",
-    "topic": "scenescape/data/camera/#",
+    "camera_topic": "scenescape/data/camera/#",
+    "region_topic": "scenescape/event/region/+/+/+",
     "enabled": true
   }'
 

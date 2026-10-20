@@ -79,18 +79,10 @@ async def _run_broker_topic(broker: Broker, topic: str):
                 port=broker.port,
                 tls_context=_tls_context() if broker.use_tls else None,
             ) as client:
-                suback = await client.subscribe(topic, qos=1)
-                granted = [_reason_code_to_int(code) for code in suback]
-
-                # MQTT SUBACK return code 128 indicates a rejected subscription.
-                if any(code == 128 for code in granted):
-                    logger.error(
-                        f"[{broker.id}] subscription rejected for topic {topic} at {broker.host}:{broker.port} (SUBACK={granted})"
-                    )
-                else:
-                    logger.info(
-                        f"[{broker.id}] subscribed to {topic} at {broker.host}:{broker.port} (SUBACK={granted})"
-                    )
+                await client.subscribe(topic, qos=1)
+                logger.info(
+                    f"[{broker.id}] subscribed to {topic} at {broker.host}:{broker.port}"
+                )
                 async for message in client.messages:
                     msg_topic = str(message.topic)
                     try:

@@ -66,7 +66,7 @@ class VmsService:
         else:
             _add(camera_name)
 
-        if available_cameras:
+        if available_cameras and derived_real_name:
             # Prefer cameras sharing the same SI prefix (e.g. si1-*).
             base_prefix = camera_name.split("-region")[0].split("-")[0]
             for cam in available_cameras:

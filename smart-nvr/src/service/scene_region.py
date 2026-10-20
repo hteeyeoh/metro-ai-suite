@@ -93,7 +93,7 @@ def _scenescape_api_get(path: str, params: Optional[Dict] = None) -> Dict:
 
 def _fetch_scenescape_scenes_once() -> List[Dict[str, str]]:
     data = _scenescape_api_get("/api/v1/scenes")
-    rows = data.get("results", data if isinstance(data, list) else [])
+    rows = data.get("results", []) if isinstance(data, dict) else (data if isinstance(data, list) else [])
     scenes = []
     if isinstance(rows, list):
         for scene in rows:
@@ -108,7 +108,7 @@ def _fetch_scenescape_scenes_once() -> List[Dict[str, str]]:
 
 def _fetch_scenescape_regions_once(scene_id: Optional[str] = None) -> List[Dict[str, str]]:
     data = _scenescape_api_get("/api/v1/regions")
-    rows = data.get("results", data if isinstance(data, list) else [])
+    rows = data.get("results", []) if isinstance(data, dict) else (data if isinstance(data, list) else [])
     regions = []
     if isinstance(rows, list):
         for region in rows:
