@@ -45,8 +45,8 @@ brokers:
     enabled: true
     rtsp_host: <si1_rtsp_ip>          # RTSP source IP, read by setup.sh
     rtsp_port: 8554                   # RTSP source port, read by setup.sh
-    scenescape_api_user: <si1_api_user>
-    scenescape_api_password: <si1_api_password>
+    scenescape_api_user: <si1_scenescape_api_user>            # SceneScape API username for this broker
+    scenescape_api_password: <si1_scenescape_api_password>    # SceneScape API password for this broker
 
   - id: si2
     name: Smart Intersection 2
@@ -59,8 +59,8 @@ brokers:
     enabled: true
     rtsp_host: <si2_rtsp_ip>
     rtsp_port: 8556                   # Nodes can share an IP on different ports
-    scenescape_api_user: <si2_api_user>
-    scenescape_api_password: <si2_api_password>
+    scenescape_api_user: <si2_scenescape_api_user>            # SceneScape API username for this broker
+    scenescape_api_password: <si2_scenescape_api_password>    # SceneScape API password for this broker
 ```
 
 > TLS is enabled by default. Broker connections do not use username or password authentication.
@@ -81,10 +81,11 @@ brokers:
 | `enabled` | — | `true` | Set to `false` to disable on startup without removing. |
 | `rtsp_host` | — | — | RTSP stream IP. Read by `setup.sh` to generate Frigate cameras; unused at runtime. |
 | `rtsp_port` | Required for `start-nvr` | — | RTSP stream port (1–65535). Read by `setup.sh start-nvr` to generate Frigate cameras; unused at runtime. |
-| `scenescape_api_user` | — | — | SceneScape API username used for this broker endpoint. |
-| `scenescape_api_password` | — | — | SceneScape API password used for this broker endpoint. |
+| `scenescape_api_user` | ✅ | — | SceneScape API username used for this broker endpoint. Can be obtained when user run 'source setup.sh start-si' command  for the respective SI node. |
+| `scenescape_api_password` | ✅ | — | SceneScape API password used for this broker endpoint. Can be obtained when user run 'source setup.sh start-si' command  for the respective SI node. |
 
-SceneScape API calls for `/scenes` and `/regions` use `https://<host>` from each broker's `host` field, authenticate with the broker's SceneScape credentials, and currently run with SSL verification disabled.
+> SceneScape API credentials are broker-specific and must be provided for each broker that requires access to the SceneScape API.
+> SceneScape API calls for `/scenes` and `/regions` use `https://<host>` from each broker's `host` field, authenticate with the broker's SceneScape credentials, and currently run with SSL verification disabled.
 
 ### Environment variables
 
@@ -277,6 +278,14 @@ nc -zv <siN_host> 1883
 
 RTSP IPs are written into `config.yml` at startup. If they changed, re-run
 `setup.sh start-nvr` to regenerate the config.
+
+**Frigate repeatedly restarts (`go2rtc ... restarting`) or logs `Too many open files`**
+
+With multiple brokers (for example 2+ SI nodes / 8+ cameras), Frigate can hit file
+descriptor limits and fail to open DB/video handles. This stack now sets
+`ulimits.nofile` for the Frigate service in [compose.yaml](../../docker/compose.yaml)
+(soft/hard `65535`). If you still see this symptom, confirm your deployment is using
+the updated compose file and recreate the Frigate container.
 
 **UI shows no Scenescape source**
 
