@@ -36,23 +36,29 @@ brokers:
     name: Smart Intersection 1
     host: <si1_mqtt_ip>               # MQTT broker IP
     port: 1883
-    topic: scenescape/data/camera/#
+    camera_topic: scenescape/data/camera/#
+    region_topic: scenescape/event/region/+/+/+
     type: scenescape
     throttle_interval: 2.0
     enabled: true
     rtsp_host: <si1_rtsp_ip>          # RTSP source IP, read by setup.sh
     rtsp_port: 8554                   # RTSP source port, read by setup.sh
+    scenescape_api_user: <si1_api_user>
+    scenescape_api_password: <si1_api_password>
 
   - id: si2
     name: Smart Intersection 2
     host: <si2_mqtt_ip>
     port: 1883
-    topic: scenescape/data/camera/#
+    camera_topic: scenescape/data/camera/#
+    region_topic: scenescape/event/region/+/+/+
     type: scenescape
     throttle_interval: 2.0
     enabled: true
     rtsp_host: <si2_rtsp_ip>
     rtsp_port: 8556                   # Nodes can share an IP on different ports
+    scenescape_api_user: <si2_api_user>
+    scenescape_api_password: <si2_api_password>
 ```
 
 > TLS is enabled by default. Broker connections do not use username or password authentication.
@@ -73,6 +79,10 @@ brokers:
 | `enabled` | — | `true` | Set to `false` to disable on startup without removing. |
 | `rtsp_host` | — | — | RTSP stream IP. Read by `setup.sh` to generate Frigate cameras; unused at runtime. |
 | `rtsp_port` | Required for `start-nvr` | — | RTSP stream port (1–65535). Read by `setup.sh start-nvr` to generate Frigate cameras; unused at runtime. |
+| `scenescape_api_user` | — | — | SceneScape API username used for this broker endpoint. |
+| `scenescape_api_password` | — | — | SceneScape API password used for this broker endpoint. |
+
+SceneScape API calls for `/scenes` and `/regions` use `https://<host>` from each broker's `host` field, authenticate with the broker's SceneScape credentials, and currently run with SSL verification disabled.
 
 ### Environment variables
 

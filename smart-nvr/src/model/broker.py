@@ -18,6 +18,9 @@ class Broker(BaseModel):
     # Consumed by setup.sh to build the Frigate camera list; unused at runtime.
     rtsp_host: str | None = None
     rtsp_port: int | None = Field(default=None, ge=1, le=65535)
+    # Optional per-broker SceneScape API credentials used by /scenes and /regions.
+    scenescape_api_user: str | None = None
+    scenescape_api_password: str | None = None
 
     @model_validator(mode="after")
     def _require_at_least_one_topic(self) -> "Broker":

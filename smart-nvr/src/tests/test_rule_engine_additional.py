@@ -38,6 +38,23 @@ async def test_process_event_source_mismatch_skips():
         assert "rule_id" not in event
 
 @pytest.mark.asyncio
+async def test_process_event_frigate_camera_rule_matches_frigate_topic():
+    """Frigate camera rules must match events arriving on the frigate/events topic."""
+    from service import rule_engine
+    event = {"label": "person", "camera": "garage"}
+    rules = [
+        {"id": "r_frigate", "label": "person", "camera": "garage", "action": "add to search", "source": "frigate"},
+    ]
+    with patch("service.rule_engine.get_rules", AsyncMock(return_value=rules)), \
+         patch("service.rule_engine.dispatch_action", AsyncMock(return_value={"ok": True})) as dispatch, \
+         patch("service.rule_engine.store_response", AsyncMock()):
+        await rule_engine.process_event(
+            event, context={"source": "frigate", "topic": "frigate/events"}
+        )
+        dispatch.assert_called_once()
+        assert event["rule_id"] == "r_frigate"
+
+@pytest.mark.asyncio
 async def test_process_event_threshold_vehicle_pass_and_fail():
     from service import rule_engine
     # First rule passes threshold, second fails
@@ -91,12 +108,14 @@ async def test_process_event_region_metadata_match_and_mismatch():
             "source": "scenescape",
             "region_id": "region-001",
             "scene_id": "scene-001",
+            "broker_id": "si1",
         }
     ]
     good_event = {
         "label": "region_event",
         "region_id": "region-001",
         "scene_id": "scene-001",
+        "broker_id": "si1",
         "camera": "si1-camera1",
         "start_time": 1.0,
         "end_time": 2.0,
@@ -105,6 +124,7 @@ async def test_process_event_region_metadata_match_and_mismatch():
         "label": "region_event",
         "region_id": "region-XYZ",
         "scene_id": "scene-001",
+        "broker_id": "si1",
         "camera": "si1-camera1",
         "start_time": 1.0,
         "end_time": 2.0,
@@ -117,6 +137,39 @@ async def test_process_event_region_metadata_match_and_mismatch():
         await rule_engine.process_event(bad_event, context={"source": "scenescape"})
         assert dispatch.await_count == 1
         assert store.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_process_event_region_rule_broker_id_mismatch():
+    from service import rule_engine
+
+    rules = [
+        {
+            "id": "r_region_broker",
+            "label": "region_event",
+            "action": "add to search",
+            "source": "scenescape",
+            "region_id": "region-001",
+            "scene_id": "scene-001",
+            "broker_id": "si2",
+        }
+    ]
+    event = {
+        "label": "region_event",
+        "region_id": "region-001",
+        "scene_id": "scene-001",
+        "broker_id": "si1",
+        "camera": "si1-camera1",
+        "start_time": 1.0,
+        "end_time": 2.0,
+    }
+
+    with patch("service.rule_engine.get_rules", AsyncMock(return_value=rules)), \
+         patch("service.rule_engine.dispatch_action", AsyncMock(return_value={"ok": True})) as dispatch, \
+         patch("service.rule_engine.store_response", AsyncMock()) as store:
+        await rule_engine.process_event(event, context={"source": "scenescape"})
+        dispatch.assert_not_called()
+        store.assert_not_called()
 
 
 @pytest.mark.asyncio

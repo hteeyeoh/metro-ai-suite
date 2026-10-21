@@ -367,6 +367,12 @@ def _derive_region_labels(
 
 async def process_scenescape_region_payload(payload, topic, broker_id=None):
     """Process a Scenescape region payload, extracting relevant information and handling it accordingly."""
+    broker_key = ""
+    if broker_id:
+        broker_key = str(broker_id)
+        if broker_key.endswith("-region"):
+            broker_key = broker_key[: -len("-region")]
+
     num_vehicles, num_pedestrians = _extract_counts(payload)
 
     iso_timestamp = str(_first_non_empty(payload, ["timestamp", "event_time", "time"]) or "")
@@ -419,6 +425,7 @@ async def process_scenescape_region_payload(payload, topic, broker_id=None):
                 "scene_name": scene_name,
                 "region_id": region_id,
                 "region_name": region_name,
+                "broker_id": broker_key,
                 "max_dwell_by_label": max_dwell_by_label,
                 "near_miss_min_distance_m": near_miss_min_distance_m,
             }
@@ -535,4 +542,3 @@ async def start_frigate_client():
         except aiomqtt.MqttError as e:
             logger.error(f" Frigate MQTT connection error: {e}; reconnecting in {BROKER_RECONNECT_DELAY}s")
             await asyncio.sleep(BROKER_RECONNECT_DELAY)
-

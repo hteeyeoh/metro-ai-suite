@@ -111,6 +111,27 @@ def extract_summary_id(raw_id):
     return raw_id
 
 
+def extract_search_row_fields(item):
+    if not isinstance(item, dict):
+        return "", ""
+
+    raw_video_id = (
+        item.get("video_id")
+        or item.get("videoId")
+        or item.get("identifier")
+        or item.get("id")
+        or ""
+    )
+    video_id = str(raw_video_id).strip()
+
+    raw_message = item.get("message")
+    if raw_message is None:
+        raw_message = item.get("status") or item.get("error") or ""
+    message = str(raw_message).strip()
+
+    return video_id, message
+
+
 def process_and_poll(camera, start, duration, action, status_output):
     result = process_video(camera, start, duration, action)
     if action == "Add to Search":
@@ -341,15 +362,20 @@ def create_ui():
     def format_search_responses():
         data = fetch_search_responses()
         rows = []
+
+        if isinstance(data, dict) and "error" in data:
+            return [["-", "-", f"❌ {data['error']}"]]
+
         for rule_id, results in data.items():
-            if results:
+            if isinstance(results, list) and results:
+                added_row = False
                 for item in results:
-                    video_id = item.get("video_id", "")
-                    message = item.get("message", "")
+                    video_id, message = extract_search_row_fields(item)
                     if video_id or message:  # Only add if at least one is non-empty
                         rows.append([rule_id, video_id, message])
-                    else:
-                        rows.append([rule_id, "", "No event occurred for this rule."])
+                        added_row = True
+                if not added_row:
+                    rows.append([rule_id, "", "No event occurred for this rule."])
             else:
                 rows.append([rule_id, "", "No search results available."])
         return rows
@@ -358,16 +384,44 @@ def create_ui():
         scenes = fetch_scenescape_scenes()
         if not scenes:
             return []
-        return [(s.get("name", s.get("id", "")), s.get("id", "")) for s in scenes]
+        choices = []
+        for scene in scenes:
+            scene_id = str(scene.get("id") or "")
+            broker_id = str(scene.get("broker_id") or "")
+            if not scene_id:
+                continue
+            scene_name = scene.get("name", scene_id)
+            label = f"{broker_id}-{scene_name}" if broker_id else scene_name
+            choices.append((label, f"{broker_id}|{scene_id}"))
+        return choices
 
-    def get_region_choices(scene_id):
-        regions = fetch_scenescape_regions(scene_id=scene_id or None)
+    def _parse_scene_value(scene_value):
+        raw = str(scene_value or "")
+        if "|" not in raw:
+            return "", raw
+        broker_id, scene_id = raw.split("|", 1)
+        return broker_id, scene_id
+
+    def _parse_region_value(region_value):
+        raw = str(region_value or "")
+        if raw.count("|") < 2:
+            return "", "", raw
+        broker_id, scene_id, region_id = raw.split("|", 2)
+        return broker_id, scene_id, region_id
+
+    def get_region_choices(scene_value):
+        broker_id, scene_id = _parse_scene_value(scene_value)
+        regions = fetch_scenescape_regions(
+            scene_id=scene_id or None,
+            broker_id=broker_id or None,
+        )
         choices = []
         for region in regions:
             region_id = region.get("region_id")
             region_name = region.get("region_name") or region_id
             if region_id:
-                choices.append((region_name, region_id))
+                value = f"{broker_id}|{scene_id}|{region_id}"
+                choices.append((region_name, value))
         return choices
 
     def refresh_region_dropdown(scene_id):
@@ -1107,6 +1161,7 @@ def create_ui():
                     selected_region_id = None
                     selected_region_name = None
                     selected_scene_id = None
+                    selected_broker_id = None
                     selected_label = label
                     selected_region_thresholds = None
                     selected_event_type = None
@@ -1133,11 +1188,25 @@ def create_ui():
                             return
 
                         selected_camera = None
-                        selected_scene_id = scene_id
-                        selected_region_id = region_id
-                        regions = fetch_scenescape_regions(scene_id=scene_id)
-                        selected = next((r for r in regions if r.get("region_id") == region_id), None)
-                        selected_region_name = selected.get("region_name") if selected else region_id
+                        selected_broker_id, selected_scene_id = _parse_scene_value(scene_id)
+                        region_broker_id, region_scene_id, selected_region_id = _parse_region_value(region_id)
+                        if region_broker_id:
+                            selected_broker_id = region_broker_id
+                        if region_scene_id:
+                            selected_scene_id = region_scene_id
+                        regions = fetch_scenescape_regions(
+                            scene_id=selected_scene_id,
+                            broker_id=selected_broker_id or None,
+                        )
+                        selected = next(
+                            (
+                                r for r in regions
+                                if r.get("region_id") == selected_region_id
+                                and (not selected_broker_id or r.get("broker_id") == selected_broker_id)
+                            ),
+                            None,
+                        )
+                        selected_region_name = selected.get("region_name") if selected else selected_region_id
                         selected_event_type = str(event_type or "count").lower()
 
                         if source == "scenescape":
@@ -1243,6 +1312,7 @@ def create_ui():
                         region_id=selected_region_id,
                         region_name=selected_region_name,
                         scene_id=selected_scene_id,
+                        broker_id=selected_broker_id,
                         region_thresholds=selected_region_thresholds,
                         event_type=selected_event_type,
                         duration_seconds=selected_duration_seconds,
@@ -1272,13 +1342,19 @@ def create_ui():
                 gr.Markdown("### Current Rules")
                 delete_status = gr.Textbox(label="Deletion Status", visible=False)
                 last_deleted_state = gr.State(value=None)
+                include_event_type_column = show_scenescape_source
                 headers = ["ID", "Source"]
                 datatypes = ["str", "str"]
                 if show_scenescape_source:
                     headers.append("Count")
                     datatypes.append("str")
-                headers.extend(["Camera/Region", "Event Type", "Label", "Action", "Delete"])
-                datatypes.extend(["str", "str", "str", "str", "str"])
+                headers.append("Camera/Region")
+                datatypes.append("str")
+                if include_event_type_column:
+                    headers.append("Event Type")
+                    datatypes.append("str")
+                headers.extend(["Label", "Action", "Delete"])
+                datatypes.extend(["str", "str", "str"])
 
                 rules_table = gr.Dataframe(
                     headers=headers,
@@ -1292,6 +1368,8 @@ def create_ui():
                     rows = []
                     for r in rules:
                         target_display = r.get("camera") or r.get("region_name") or r.get("region_id") or "-"
+                        if r.get("broker_id") and (r.get("region_id") or r.get("scene_id")):
+                            target_display = f"{r.get('broker_id')}:{target_display}"
                         label_display = r.get("label", "-")
                         if r.get("region_thresholds"):
                             threshold_labels = sorted(r.get("region_thresholds", {}).keys())
@@ -1330,7 +1408,10 @@ def create_ui():
                                 row.append(threshold_text)
                             else:
                                 row.append(str(r.get("count", "-")))
-                        row.extend([target_display, event_type_display, label_display, r.get("action", "-"), "🗑️ Delete"])
+                        row.append(target_display)
+                        if include_event_type_column:
+                            row.append(event_type_display)
+                        row.extend([label_display, r.get("action", "-"), "🗑️ Delete"])
                         rows.append(row)
                     return rows
 

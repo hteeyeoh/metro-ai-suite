@@ -42,7 +42,13 @@ async def process_event(event: dict, context: dict = None):
             continue
 
         is_camera_rule = bool(rule.get("camera")) and not is_region_rule
-        if is_camera_rule and event_topic and not is_camera_topic:
+        # Topic filtering only applies to SceneScape topics; Frigate events
+        # arrive on "frigate/events" and must still match camera rules.
+        if (
+            is_camera_rule
+            and event_topic.startswith("scenescape/")
+            and not is_camera_topic
+        ):
             logger.debug(
                 f"Rule did not match: camera topic mismatch (topic={event_topic})."
             )
@@ -176,6 +182,10 @@ async def process_event(event: dict, context: dict = None):
 
         if rule.get("scene_id") and rule.get("scene_id") != event.get("scene_id"):
             logger.debug("Rule did not match: scene_id mismatch.")
+            continue
+
+        if rule.get("broker_id") and rule.get("broker_id") != event.get("broker_id"):
+            logger.debug("Rule did not match: broker_id mismatch.")
             continue
 
         threshold = rule.get("count")

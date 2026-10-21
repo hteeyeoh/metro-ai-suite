@@ -215,6 +215,7 @@ _YAML_HEADER = (
     "# host = MQTT broker IP only.\n"
     "# rtsp_host = optional SI RTSP stream IP, read by setup.sh to build the Frigate camera list.\n"
     "# rtsp_port = SI RTSP stream port, read by setup.sh. Required for start-nvr (or set SI{N}_RTSP_PORT); ignored by start (uses RTSP_STREAM_PORT).\n"
+    "# scenescape_api_user/password = optional per-broker SceneScape API credentials for /scenes and /regions.\n"
     "# Broker id must match the SI node prefix in Frigate camera names (e.g. si1 -> si1-camera1).\n"
 )
 
@@ -229,4 +230,3 @@ async def sync_yaml_from_redis(request=None, path: str = BROKERS_CONFIG_PATH):
         logger.info(f"Synced {len(brokers)} broker(s) to {path}")
     except OSError as e:
         logger.warning(f"Could not write brokers YAML at {path}: {e}")
-

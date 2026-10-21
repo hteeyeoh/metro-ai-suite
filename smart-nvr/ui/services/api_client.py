@@ -32,10 +32,19 @@ def fetch_scenescape_scenes() -> List[Dict[str, str]]:
     return []
 
 
-def fetch_scenescape_regions(scene_id: Optional[str] = None) -> List[Dict[str, str]]:
+def fetch_scenescape_regions(
+    scene_id: Optional[str] = None,
+    broker_id: Optional[str] = None,
+) -> List[Dict[str, str]]:
     """Fetch SceneScape regions from backend proxy endpoint."""
     max_attempts = 2
-    params = {"scene_id": scene_id} if scene_id else None
+    params = {}
+    if scene_id:
+        params["scene_id"] = scene_id
+    if broker_id:
+        params["broker_id"] = broker_id
+    if not params:
+        params = None
 
     for attempt in range(max_attempts):
         try:
@@ -166,6 +175,7 @@ def add_rule(
     region_id: Optional[str] = None,
     region_name: Optional[str] = None,
     scene_id: Optional[str] = None,
+    broker_id: Optional[str] = None,
     region_thresholds: Optional[Dict[str, int]] = None,
     event_type: Optional[str] = None,
     duration_seconds: Optional[int] = None,
@@ -179,9 +189,10 @@ def add_rule(
     camera_key = camera or "no-camera"
     region_key = region_id or "no-region"
     scene_key = scene_id or "no-scene"
+    broker_key = broker_id or "no-broker"
     rule_content = (
         f"{camera_key}-{label}-{normalized_source}-{normalized_action}-"
-        f"{scene_key}-{region_key}"
+        f"{broker_key}-{scene_key}-{region_key}"
     )
     if region_thresholds:
         thresholds_key = ",".join(
@@ -257,6 +268,8 @@ def add_rule(
         payload["region_name"] = region_name
     if scene_id:
         payload["scene_id"] = scene_id
+    if broker_id:
+        payload["broker_id"] = broker_id
     if region_thresholds:
         payload["region_thresholds"] = region_thresholds
     if event_type:
@@ -335,4 +348,3 @@ def fetch_summary_status(summary_id: str) -> str:
     except Exception as e:
         logger.error(f"Error fetching search responses: {e}")
         return str(e)
-

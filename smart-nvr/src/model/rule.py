@@ -15,6 +15,7 @@ class Rule(BaseModel):
     region_id: str | None = None
     region_name: str | None = None
     scene_id: str | None = None
+    broker_id: str | None = None
     region_thresholds: Dict[str, int] | None = None
     event_type: str | None = None
     duration_seconds: int | None = Field(default=None, gt=0)

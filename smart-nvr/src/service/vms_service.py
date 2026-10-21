@@ -28,6 +28,9 @@ frigate_service = FrigateService()
 summarization_service = SummarizationService()
 FRIGATE_CLIP_END_BUFFER_SECONDS = 2.0
 FRIGATE_CLIP_MAX_WAIT_SECONDS = 5.0
+FRIGATE_CLIP_EMPTY_RETRIES = 3
+FRIGATE_CLIP_RETRY_DELAY_SECONDS = 5.0
+FRIGATE_CLIP_RETRY_WINDOW_SECONDS = 60.0
 
 
 class VmsService:
@@ -69,13 +72,18 @@ class VmsService:
         if available_cameras and derived_real_name:
             # Prefer cameras sharing the same SI prefix (e.g. si1-*).
             base_prefix = camera_name.split("-region")[0].split("-")[0]
+            matched_prefix_camera = False
             for cam in available_cameras:
                 if cam.startswith(f"{base_prefix}-"):
                     _add(cam)
+                    matched_prefix_camera = True
 
-            # If nothing matched suffix rules, at least try available cameras deterministically.
-            for cam in available_cameras:
-                _add(cam)
+            # Only broaden to all cameras when we cannot identify any matching
+            # prefix camera. This prevents cross-broker fallback (e.g. si2 -> si1)
+            # when multiple SI brokers are configured.
+            if not matched_prefix_camera:
+                for cam in available_cameras:
+                    _add(cam)
 
         return candidates
 
@@ -119,59 +127,75 @@ class VmsService:
         temp_file_size = 0
         selected_camera = None
 
-        for candidate_camera in camera_candidates:
-            try:
-                stream_response = await asyncio.to_thread(
-                    self.frigate_service.get_clip_from_timestamps,
-                    candidate_camera,
-                    retrieval_start_time,
-                    retrieval_end_time,
-                    download=True,
-                )
-                logger.info(f"Clip retrieved from Frigate for camera '{candidate_camera}'.")
-            except Exception as e:
-                logger.warning(
-                    f"Failed to get clip for camera '{candidate_camera}' "
-                    f"(start={retrieval_start_time}, end={retrieval_end_time}): {e}"
-                )
-                continue
+        # Frigate may not have finalized the recording for an event that just ended,
+        # so an empty clip is retried briefly, but only for recent windows.
+        is_recent_window = (time.time() - retrieval_end_time) < FRIGATE_CLIP_RETRY_WINDOW_SECONDS
+        max_attempts = 1 + (FRIGATE_CLIP_EMPTY_RETRIES if is_recent_window else 0)
 
-            temp_file_size = 0
-            with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tmp_file:
-                tmp_path = tmp_file.name
-            logger.info(f"Temporary file created at: {tmp_path}")
+        for attempt in range(max_attempts):
+            if attempt:
+                logger.info(
+                    f"Clip was empty; retrying retrieval in {FRIGATE_CLIP_RETRY_DELAY_SECONDS:.1f}s "
+                    f"(attempt {attempt + 1}/{max_attempts})."
+                )
+                await asyncio.sleep(FRIGATE_CLIP_RETRY_DELAY_SECONDS)
 
-            try:
-                async with aiofiles.open(tmp_path, "wb") as f:
-                    async for chunk in stream_response.body_iterator:
-                        await f.write(chunk)
-                        temp_file_size += len(chunk)
-            except Exception as e:
-                logger.error(f"Failed to process video stream for camera '{candidate_camera}': {e}")
+            for candidate_camera in camera_candidates:
                 try:
-                    if tmp_path and os.path.exists(tmp_path):
+                    stream_response = await asyncio.to_thread(
+                        self.frigate_service.get_clip_from_timestamps,
+                        candidate_camera,
+                        retrieval_start_time,
+                        retrieval_end_time,
+                        download=True,
+                    )
+                    logger.info(f"Clip retrieved from Frigate for camera '{candidate_camera}'.")
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to get clip for camera '{candidate_camera}' "
+                        f"(start={retrieval_start_time}, end={retrieval_end_time}): {e}"
+                    )
+                    continue
+
+                temp_file_size = 0
+                with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tmp_file:
+                    tmp_path = tmp_file.name
+                logger.info(f"Temporary file created at: {tmp_path}")
+
+                try:
+                    async with aiofiles.open(tmp_path, "wb") as f:
+                        async for chunk in stream_response.body_iterator:
+                            await f.write(chunk)
+                            temp_file_size += len(chunk)
+                except Exception as e:
+                    logger.error(f"Failed to process video stream for camera '{candidate_camera}': {e}")
+                    try:
+                        if tmp_path and os.path.exists(tmp_path):
+                            os.remove(tmp_path)
+                    except Exception:
+                        pass
+                    return {"status": 500, "message": "Failed to process video stream"}
+
+                # Check if video is too small (likely empty)
+                if temp_file_size <= 100:
+                    logger.warning(
+                        f"No video found for camera '{candidate_camera}' and given timestamps (file size: {temp_file_size} bytes)"
+                    )
+                    try:
                         os.remove(tmp_path)
-                except Exception:
-                    pass
-                return {"status": 500, "message": "Failed to process video stream"}
+                    except Exception:
+                        pass
+                    tmp_path = ""
+                    continue
 
-            # Check if video is too small (likely empty)
-            if temp_file_size <= 100:
-                logger.warning(
-                    f"No video found for camera '{candidate_camera}' and given timestamps (file size: {temp_file_size} bytes)"
+                selected_camera = candidate_camera
+                logger.info(
+                    f"Stream written to temporary file for camera '{selected_camera}'. Size: {temp_file_size} bytes"
                 )
-                try:
-                    os.remove(tmp_path)
-                except Exception:
-                    pass
-                tmp_path = ""
-                continue
+                break
 
-            selected_camera = candidate_camera
-            logger.info(
-                f"Stream written to temporary file for camera '{selected_camera}'. Size: {temp_file_size} bytes"
-            )
-            break
+            if selected_camera:
+                break
 
         if not selected_camera:
             return {

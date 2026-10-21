@@ -26,6 +26,22 @@ def test_build_camera_candidates_keeps_real_camera_name():
     candidates = vs._build_camera_candidates("si1-camera1", ["si1-camera1", "si1-camera2"])
     assert candidates[0] == "si1-camera1"
 
+
+def test_build_camera_candidates_does_not_fallback_to_other_brokers_when_prefix_matches():
+    vs = VmsService(frigate_service=MagicMock(), summarization_service=MagicMock())
+    candidates = vs._build_camera_candidates(
+        "si2-region-camera3",
+        [
+            "si2-camera1",
+            "si2-camera2",
+            "si2-camera3",
+            "si2-camera4",
+            "si1-camera1",
+            "si1-camera2",
+        ],
+    )
+    assert candidates == ["si2-camera3", "si2-camera1", "si2-camera2", "si2-camera4"]
+
 @pytest.mark.asyncio
 async def test_upload_video_to_summarizer_success(monkeypatch):
     vs = VmsService(frigate_service=MagicMock(), summarization_service=MagicMock())
@@ -46,6 +62,45 @@ async def test_upload_video_to_summarizer_small_file(monkeypatch):
     vs.frigate_service.get_clip_from_timestamps.return_value = dummy_stream
     resp = await vs.upload_video_to_summarizer("cam1", 1.0, 2.0, False)
     assert resp["status"] == 404
+
+@pytest.mark.asyncio
+async def test_upload_video_to_summarizer_retries_empty_clip_for_recent_window(monkeypatch):
+    vs = VmsService(frigate_service=MagicMock(), summarization_service=MagicMock())
+    vs.vss_search_url = "http://dummy-search"
+    vs.frigate_service.get_clip_from_timestamps.side_effect = [
+        DummyAsyncStream([b""]),
+        DummyAsyncStream([b"x" * 200]),
+    ]
+    vs.summarization_service.video_upload.return_value = {"videoId": "vid-retry"}
+    monkeypatch.setattr("service.vms_service.time.time", lambda: 100.0)
+    sleep_calls = []
+
+    async def fake_sleep(seconds):
+        sleep_calls.append(seconds)
+
+    monkeypatch.setattr("service.vms_service.asyncio.sleep", fake_sleep)
+
+    resp = await vs.upload_video_to_summarizer("cam1", 90.0, 98.0, True)
+
+    assert resp == {"status": 200, "message": "vid-retry"}
+    assert vs.frigate_service.get_clip_from_timestamps.call_count == 2
+    assert sleep_calls == [5.0]
+
+@pytest.mark.asyncio
+async def test_upload_video_to_summarizer_does_not_retry_old_window(monkeypatch):
+    vs = VmsService(frigate_service=MagicMock(), summarization_service=MagicMock())
+    vs.frigate_service.get_clip_from_timestamps.return_value = DummyAsyncStream([b""])
+    monkeypatch.setattr("service.vms_service.time.time", lambda: 10000.0)
+
+    async def fake_sleep(seconds):
+        raise AssertionError("old windows must not be retried")
+
+    monkeypatch.setattr("service.vms_service.asyncio.sleep", fake_sleep)
+
+    resp = await vs.upload_video_to_summarizer("cam1", 1.0, 2.0, True)
+
+    assert resp["status"] == 404
+    assert vs.frigate_service.get_clip_from_timestamps.call_count == 1
 
 @pytest.mark.asyncio
 async def test_summarize_pipeline_failure(monkeypatch):

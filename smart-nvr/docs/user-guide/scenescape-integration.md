@@ -52,6 +52,12 @@ export VSS_PORT=<vss_port>                        # optional, default 12345
 source setup.sh start
 ```
 
+When running in single-node SceneScape mode, `start` resolves SceneScape API
+credentials from `smart-intersection/src/secrets/browser.auth` and writes them
+into the `si1` entry in
+[brokers.yaml](../../resources/broker-config/brokers.yaml) as
+`scenescape_api_user` and `scenescape_api_password`.
+
 ### Verify
 
 ```bash

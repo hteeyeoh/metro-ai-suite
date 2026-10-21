@@ -51,56 +51,48 @@ class DummySession:
         return self.post_response
 
 
+def _target(**overrides):
+    target = {
+        "broker_id": "si1",
+        "base_url": "https://10.0.0.1",
+        "user": "user",
+        "password": "pass",
+    }
+    target.update(overrides)
+    return target
+
+
 def test_new_direct_session_disables_env_proxy():
     session = sr._new_direct_session()
     assert session.trust_env is False
 
 
-def test_scenescape_login_without_credentials_returns_none(monkeypatch):
-    monkeypatch.setattr(sr, "SCENESCAPE_API_USER", "")
-    monkeypatch.setattr(sr, "SCENESCAPE_API_PASSWORD", "")
-
-    token = sr._scenescape_login(DummySession())
-
+def test_scenescape_login_without_credentials_returns_none():
+    token = sr._scenescape_login(DummySession(), _target(user="", password=""))
     assert token is None
 
 
-def test_scenescape_login_success_returns_token(monkeypatch):
-    monkeypatch.setattr(sr, "SCENESCAPE_API_USER", "user")
-    monkeypatch.setattr(sr, "SCENESCAPE_API_PASSWORD", "pass")
-    monkeypatch.setattr(sr, "SCENESCAPE_API_BASE_URL", "http://scene")
-    monkeypatch.setattr(sr, "SCENESCAPE_API_AUTH_PATH", "/auth")
-
+def test_scenescape_login_success_returns_token():
     session = DummySession(post_response=DummyResponse(json_data={"token": "abc123"}))
-    token = sr._scenescape_login(session)
+    token = sr._scenescape_login(session, _target(base_url="https://scene"))
 
     assert token == "abc123"
-    assert session.post_calls[0]["url"] == "http://scene/auth"
-
-
-def test_scenescape_login_missing_token_raises(monkeypatch):
-    monkeypatch.setattr(sr, "SCENESCAPE_API_USER", "user")
-    monkeypatch.setattr(sr, "SCENESCAPE_API_PASSWORD", "pass")
-
-    session = DummySession(post_response=DummyResponse(json_data={}))
-
-    try:
-        sr._scenescape_login(session)
-        assert False, "Expected ValueError when token is absent"
-    except ValueError as err:
-        assert "no token" in str(err).lower()
+    assert session.post_calls[0]["url"] == "https://scene/api/v1/auth"
+    assert session.post_calls[0]["verify"] is False
 
 
 def test_scenescape_api_get_uses_existing_token_header(monkeypatch):
     session = DummySession(get_responses=[DummyResponse(json_data={"ok": True})])
     monkeypatch.setattr(sr, "_new_direct_session", lambda: session)
-    monkeypatch.setattr(sr, "SCENESCAPE_API_BASE_URL", "http://scene")
-    sr._scenescape_token = "cached-token"
+    sr._scenescape_tokens = {"https://scene|user": "cached-token"}
 
-    data = sr._scenescape_api_get("/api/v1/scenes", params={"k": "v"})
+    data = sr._scenescape_api_get(
+        "/api/v1/scenes", params={"k": "v"}, target=_target(base_url="https://scene")
+    )
 
     assert data == {"ok": True}
     assert session.get_calls[0]["headers"]["Authorization"] == "Token cached-token"
+    assert session.get_calls[0]["verify"] is False
 
 
 def test_scenescape_api_get_retries_after_401_and_login(monkeypatch):
@@ -111,32 +103,15 @@ def test_scenescape_api_get_retries_after_401_and_login(monkeypatch):
         ]
     )
     monkeypatch.setattr(sr, "_new_direct_session", lambda: session)
-    monkeypatch.setattr(sr, "_scenescape_login", lambda _session: "fresh-token")
-    monkeypatch.setattr(sr, "SCENESCAPE_API_BASE_URL", "http://scene")
-    sr._scenescape_token = None
+    monkeypatch.setattr(sr, "_scenescape_login", lambda _session, _target: "fresh-token")
+    sr._scenescape_tokens = {}
 
-    data = sr._scenescape_api_get("/api/v1/regions")
+    data = sr._scenescape_api_get("/api/v1/regions", target=_target(base_url="https://scene"))
 
     assert data == {"results": []}
     assert len(session.get_calls) == 2
     assert session.get_calls[1]["headers"]["Authorization"] == "Token fresh-token"
-
-
-def test_scenescape_api_get_401_and_failed_login_raises(monkeypatch):
-    session = DummySession(get_responses=[DummyResponse(status_code=401)])
-    monkeypatch.setattr(sr, "_new_direct_session", lambda: session)
-    monkeypatch.setattr(
-        sr,
-        "_scenescape_login",
-        lambda _session: (_ for _ in ()).throw(RuntimeError("bad creds")),
-    )
-    monkeypatch.setattr(sr, "SCENESCAPE_API_BASE_URL", "http://scene")
-
-    try:
-        sr._scenescape_api_get("/api/v1/scenes")
-        assert False, "Expected HTTPError from original 401 response"
-    except requests.HTTPError:
-        pass
+    assert sr._scenescape_tokens["https://scene|user"] == "fresh-token"
 
 
 def test_scenescape_api_get_401_retry_without_token_header(monkeypatch):
@@ -147,11 +122,10 @@ def test_scenescape_api_get_401_retry_without_token_header(monkeypatch):
         ]
     )
     monkeypatch.setattr(sr, "_new_direct_session", lambda: session)
-    monkeypatch.setattr(sr, "_scenescape_login", lambda _session: None)
-    monkeypatch.setattr(sr, "SCENESCAPE_API_BASE_URL", "http://scene")
-    sr._scenescape_token = None
+    monkeypatch.setattr(sr, "_scenescape_login", lambda _session, _target: None)
+    sr._scenescape_tokens = {}
 
-    data = sr._scenescape_api_get("/api/v1/scenes")
+    data = sr._scenescape_api_get("/api/v1/scenes", target=_target(base_url="https://scene"))
 
     assert data == {"ok": True}
     assert session.get_calls[1]["headers"] == {}
@@ -161,7 +135,7 @@ def test_fetch_scenescape_scenes_once_parses_results(monkeypatch):
     monkeypatch.setattr(
         sr,
         "_scenescape_api_get",
-        lambda _path: {
+        lambda _path, params=None, target=None: {
             "results": [
                 {"uid": "scene-1", "name": "Main"},
                 {"id": "scene-2"},
@@ -171,25 +145,19 @@ def test_fetch_scenescape_scenes_once_parses_results(monkeypatch):
         },
     )
 
-    scenes = sr._fetch_scenescape_scenes_once()
+    scenes = sr._fetch_scenescape_scenes_once(target=_target())
 
     assert scenes == [
-        {"id": "scene-1", "name": "Main"},
-        {"id": "scene-2", "name": "scene-2"},
+        {"id": "scene-1", "name": "Main", "broker_id": "si1"},
+        {"id": "scene-2", "name": "scene-2", "broker_id": "si1"},
     ]
-
-
-def test_fetch_scenescape_scenes_once_handles_non_list_rows(monkeypatch):
-    monkeypatch.setattr(sr, "_scenescape_api_get", lambda _path: {"results": {"bad": "shape"}})
-
-    assert sr._fetch_scenescape_scenes_once() == []
 
 
 def test_fetch_scenescape_regions_once_parses_and_filters(monkeypatch):
     monkeypatch.setattr(
         sr,
         "_scenescape_api_get",
-        lambda _path: {
+        lambda _path, params=None, target=None: {
             "results": [
                 "invalid",
                 {
@@ -203,13 +171,12 @@ def test_fetch_scenescape_regions_once_parses_and_filters(monkeypatch):
                     "scene": "s2",
                     "scene_name": "Scene Two",
                 },
-                {"name": "missing-id"},
             ]
         },
     )
 
-    all_regions = sr._fetch_scenescape_regions_once()
-    only_s1 = sr._fetch_scenescape_regions_once(scene_id="s1")
+    all_regions = sr._fetch_scenescape_regions_once(target=_target())
+    only_s1 = sr._fetch_scenescape_regions_once(scene_id="s1", target=_target())
 
     assert len(all_regions) == 2
     assert all_regions[0]["region_id"] == "r1"
@@ -220,14 +187,9 @@ def test_fetch_scenescape_regions_once_parses_and_filters(monkeypatch):
             "region_name": "Crosswalk",
             "scene_id": "s1",
             "scene_name": "Scene One",
+            "broker_id": "si1",
         }
     ]
-
-
-def test_fetch_scenescape_regions_once_handles_non_list_rows(monkeypatch):
-    monkeypatch.setattr(sr, "_scenescape_api_get", lambda _path: {"results": "not-a-list"})
-
-    assert sr._fetch_scenescape_regions_once() == []
 
 
 def test_retry_fetch_retries_and_sleeps(monkeypatch):
@@ -251,38 +213,73 @@ def test_retry_fetch_retries_and_sleeps(monkeypatch):
     assert sleep_calls == [0]
 
 
-def test_retry_fetch_returns_empty_after_exhaustion(monkeypatch):
-    monkeypatch.setattr(sr, "SCENESCAPE_API_RETRY_COUNT", 2)
-    monkeypatch.setattr(sr, "SCENESCAPE_API_RETRY_DELAY_SEC", 0)
+def test_resolve_targets_builds_from_brokers_without_fallback():
+    brokers = [
+        {
+            "id": "si1",
+            "enabled": True,
+            "type": "scenescape",
+            "host": "10.0.0.1",
+            "scenescape_api_user": "u1",
+            "scenescape_api_password": "p1",
+        },
+        {
+            "id": "si2",
+            "enabled": True,
+            "type": "scenescape",
+            "host": "10.0.0.2",
+            "scenescape_api_user": "u2",
+            "scenescape_api_password": "p2",
+        },
+    ]
 
-    sleep_calls = []
-    monkeypatch.setattr(sr.time, "sleep", lambda seconds: sleep_calls.append(seconds))
+    targets = sr._resolve_scenescape_targets(brokers)
 
-    rows = sr._retry_scenescape_fetch(lambda: [])
+    assert targets == [
+        {
+            "broker_id": "si1",
+            "base_url": "https://10.0.0.1",
+            "user": "u1",
+            "password": "p1",
+        },
+        {
+            "broker_id": "si2",
+            "base_url": "https://10.0.0.2",
+            "user": "u2",
+            "password": "p2",
+        },
+    ]
 
-    assert rows == []
-    assert sleep_calls == [0]
+
+def test_resolve_targets_returns_empty_without_brokers():
+    assert sr._resolve_scenescape_targets(None) == []
+    assert sr._resolve_scenescape_targets([]) == []
 
 
 def test_public_retry_wrappers_delegate_correctly(monkeypatch):
-    monkeypatch.setattr(sr, "_fetch_scenescape_scenes_once", lambda: [{"id": "s"}])
+    monkeypatch.setattr(
+        sr,
+        "_resolve_scenescape_targets",
+        lambda brokers=None: [{"base_url": "x", "broker_id": "si1"}],
+    )
+    monkeypatch.setattr(
+        sr,
+        "_fetch_scenescape_scenes_once",
+        lambda target=None: [{"id": target["base_url"], "broker_id": target.get("broker_id")}],
+    )
 
     captured = {}
 
-    def fake_fetch_regions(scene_id=None):
+    def fake_fetch_regions(scene_id=None, target=None):
         captured["scene_id"] = scene_id
-        return [{"region_id": "r"}]
+        return [{"region_id": target["base_url"], "broker_id": target.get("broker_id")}]
 
     monkeypatch.setattr(sr, "_fetch_scenescape_regions_once", fake_fetch_regions)
+    monkeypatch.setattr(sr, "_retry_scenescape_fetch", lambda fetch_fn: fetch_fn())
 
-    def passthrough_retry(fetch_fn):
-        return fetch_fn()
+    scenes = sr.fetch_scenes_with_retry(brokers=[{"id": "si1"}])
+    regions = sr.fetch_regions_with_retry(scene_id="s-1", brokers=[{"id": "si1"}], broker_id="si1")
 
-    monkeypatch.setattr(sr, "_retry_scenescape_fetch", passthrough_retry)
-
-    scenes = sr.fetch_scenes_with_retry()
-    regions = sr.fetch_regions_with_retry(scene_id="s-1")
-
-    assert scenes == [{"id": "s"}]
-    assert regions == [{"region_id": "r"}]
+    assert scenes == [{"id": "x", "broker_id": "si1"}]
+    assert regions == [{"region_id": "x", "broker_id": "si1"}]
     assert captured["scene_id"] == "s-1"

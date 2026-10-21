@@ -13,16 +13,36 @@ summarization_service = SummarizationService()
 vms_service = VmsService(frigate_service, summarization_service)
 
 
+def _build_upload_tag(event: dict, camera_name: str, is_region_event: bool) -> str:
+    """
+    Build an upload tag for the event based on the camera name and region information.
+    """
+    if not is_region_event:
+        return camera_name
+
+    region_tag = event.get("region_name") or event.get("region_id")
+    if not region_tag:
+        return camera_name
+
+    broker_key = str(event.get("broker_id") or "").strip()
+    if broker_key.endswith("-region"):
+        broker_key = broker_key[: -len("-region")]
+
+    if broker_key and not str(region_tag).startswith(f"{broker_key}-"):
+        return f"{broker_key}-{region_tag}"
+
+    return str(region_tag)
+
+
 async def dispatch_action(action: str, event: dict):
+    """
+    Dispatch an action based on the provided event.
+    """
     if action == "summarize":
         try:
             camera_name = event.get("camera")
             is_region_event = bool(event.get("region_id") or event.get("scene_id"))
-            upload_tag = (
-                event.get("region_name") or event.get("region_id")
-                if is_region_event
-                else camera_name
-            )
+            upload_tag = _build_upload_tag(event, camera_name, is_region_event)
             start_time = event.get("start_time")
             end_time = event.get("end_time")
 
@@ -69,11 +89,7 @@ async def dispatch_action(action: str, event: dict):
         try:
             camera_name = event.get("camera")
             is_region_event = bool(event.get("region_id") or event.get("scene_id"))
-            upload_tag = (
-                event.get("region_name") or event.get("region_id")
-                if is_region_event
-                else camera_name
-            )
+            upload_tag = _build_upload_tag(event, camera_name, is_region_event)
             start_time = event.get("start_time")
             end_time = event.get("end_time")
 
