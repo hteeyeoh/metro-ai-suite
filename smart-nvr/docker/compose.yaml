@@ -32,12 +32,10 @@ services:
       mqtt-broker:
         condition: service_healthy
     environment:
-      no_proxy: ${no_proxy}, frigate, ${VSS_IP}, ${VLM_SERVING_IP}
-      NO_PROXY: ${no_proxy}, frigate, ${VSS_IP}, ${VLM_SERVING_IP}
+      no_proxy: ${no_proxy}, frigate, ${VSS_IP}
+      NO_PROXY: ${no_proxy}, frigate, ${VSS_IP}
       FRIGATE_MQTT_PASSWORD: ${MQTT_PASSWORD}
       FRIGATE_MQTT_USER: ${MQTT_USER}
-      OPENAI_BASE_URL: "http://${VLM_SERVING_IP}:${VLM_SERVING_PORT}/v1"
-      OPENAI_API_KEY: "your_openai_api_key"
   nvr-event-router:
     container_name: nvr-event-router
     image: ${REGISTRY}nvr-event-router:${TAG}
@@ -118,7 +116,7 @@ services:
       API_BASE_URL: "http://nvr-event-router:8000"
       EVENT_POLL_INTERVAL: "10"
       NVR_SCENESCAPE: ${NVR_SCENESCAPE}
-      no_proxy: ${no_proxy}, frigate, nvr-event-router, ${VSS_IP}, ${VLM_SERVING_IP}
+      no_proxy: ${no_proxy}, frigate, nvr-event-router, ${VSS_IP}
 
   mqtt-broker:
     image: eclipse-mosquitto:2.0.21
