@@ -24,7 +24,7 @@ If you want to clone a specific release branch, replace `main` with the desired 
 To learn more on partial cloning, check the [Repository Cloning guide](https://docs.openedgeplatform.intel.com/dev/OEP-articles/contribution-guide.html#repository-cloning-partial-cloning).
 
 ```bash
-git clone --filter=blob:none --sparse --branch main https://github.com/open-edge-platform/metro-ai-suite.git
+git clone --filter=blob:none --sparse --branch release-2026.3.0 https://github.com/open-edge-platform/metro-ai-suite.git
 cd metro-ai-suite
 git sparse-checkout set live-video-analysis/live-video-captioning
 cd live-video-analysis/live-video-captioning
@@ -52,7 +52,7 @@ This script sets these important values:
 |----------|---------|--------|
 | `HOST_IP` | *(auto-detected)* | Host address reachable by the browser for WebRTC signaling. |
 | `REGISTRY` | `intel/` | Image registry prefix. |
-| `TAG` | `latest` | Docker image tag. |
+| `TAG` | `2026.3.0-rc1` | Docker image tag. |
 | `DASHBOARD_PORT` | `4173` | Port for the web dashboard. |
 | `EVAM_HOST_PORT` | `8040` | Port for the pipeline management REST API. |
 | `WHIP_SERVER_PORT` | `8889` | Port for WebRTC/WHIP signaling (mediamtx). |
