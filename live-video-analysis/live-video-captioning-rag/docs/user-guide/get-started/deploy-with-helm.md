@@ -76,7 +76,7 @@ To set up the integrated deployment, obtain the chart and install it with your e
 1. Run the following command to pull the [prebuild chart](https://hub.docker.com/r/intel/live-video-captioning-rag/tags) from Docker Hub. Refer to the release notes for details on the latest version number to use for the sample application.
 
    ```bash
-   helm pull oci://registry-1.docker.io/intel/live-video-captioning-rag --version <version-no>
+   helm pull oci://registry-1.docker.io/intel/live-video-captioning-rag --version 2026.3.0-rc1-helm
    ```
 
    > [!NOTE]
@@ -85,7 +85,7 @@ To set up the integrated deployment, obtain the chart and install it with your e
 2. Extract the `.tgz` file.
 
    ```bash
-   tar -xvf live-video-captioning-rag-<version-no>.tgz
+   tar -xvf live-video-captioning-rag-2026.3.0-rc1-helm.tgz
    cd live-video-captioning-rag
    ```
 
@@ -128,7 +128,7 @@ To set up the integrated deployment, obtain the chart and install it with your e
 
    ```bash
    # Clone the mainline branch
-   git clone https://github.com/open-edge-platform/metro-ai-suite.git -b main
+   git clone https://github.com/open-edge-platform/metro-ai-suite.git -b release-2026.3.0
    ```
 
 2. Navigate to the chart directory.

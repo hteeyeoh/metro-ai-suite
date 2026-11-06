@@ -77,7 +77,7 @@ There are 2 options to obtain the charts in your workspace:
 Use the following command to pull the [prebuild chart](https://hub.docker.com/r/intel/live-video-captioning/tags) from Docker Hub:
 
 ```bash
-helm pull oci://registry-1.docker.io/intel/live-video-captioning --version <version-no>
+helm pull oci://registry-1.docker.io/intel/live-video-captioning --version 2026.3.0-rc1-helm
 ```
 
 Refer to the release notes for details on the latest version number to use for the sample application.
@@ -87,7 +87,7 @@ Refer to the release notes for details on the latest version number to use for t
 After pulling the chart, extract the `.tgz` file:
 
 ```bash
-tar -xvf live-video-captioning-<version-no>.tgz
+tar -xvf live-video-captioning-2026.3.0-rc1-helm.tgz
 ```
 
 This will create a directory named `live-video-captioning` containing the chart files. Navigate to the extracted directory to access the charts.
@@ -104,7 +104,7 @@ Clone the repository containing the charts files:
 
 ```bash
 # Clone the mainline branch
-git clone https://github.com/open-edge-platform/metro-ai-suite.git -b main
+git clone https://github.com/open-edge-platform/metro-ai-suite.git -b release-2026.3.0
 ```
 
 ##### Step 2: Navigate to the chart directory
