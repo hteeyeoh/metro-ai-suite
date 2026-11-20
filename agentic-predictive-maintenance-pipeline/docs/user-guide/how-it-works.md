@@ -52,6 +52,7 @@ restarted application does not show detections without corresponding run IDs.
 Run the setup script with a use case:
 
 ```bash
+./scripts/download_llm_model.sh --use-case pipeline-defect-detection --detector-only
 source setup.sh --use-case pipeline-defect-detection
 ```
 
@@ -64,7 +65,7 @@ Services started:
 | Container | Role |
 |-----------|------|
 | `apm-mqtt-broker` | Mosquitto MQTT broker |
-| `apm-model-download` | Downloads detection model on first run |
+| `apm-model-download` | Downloads the pinned HF detector without conversion and downloads/converts the LLM when requested |
 | `apm-dlstreamer` | Video inference (DL Streamer Pipeline Server) |
 | `apm-storage` | REST API + SQLite storage for detections |
 | `apm-detection` | Owns DL Streamer control, raw-detection ingestion, and the batch-complete event |
@@ -235,12 +236,15 @@ event. All agents read from the storage service.
 
 Reads `agents.yaml` thresholds and the run's detections. Determines which defect classes triggered policy violations.
 
-- `Rupture` or `Disconnect` above threshold: **HIGH** priority alert.
+- The reference detector emits `gas-pipelines`, `deformation`, `corrosion`,
+  `coating degradation`, and `deformations`.
+- Average confidence at or above `0.7` is an illustrative review flag, not a
+  measure of physical severity. All fallback actions are **MONITOR**.
 - Uses `policy_fallback.json` rules in fallback mode; no LLM calls.
 
 ### Agent 2 — Analysis Agent
 
-Filters detections by `min_confidence` (default `0.5`). Produces:
+Filters detections by `min_confidence` (`0.25` for this use case). Produces:
 - Dominant defect class and counts
 - Confidence distribution
 - Temporal trend across frame IDs
@@ -248,27 +252,34 @@ Filters detections by `min_confidence` (default `0.5`). Produces:
 
 ### Agent 3 — Evidence Agent
 
-Builds a formal audit trail:
-- Total frames inspected versus frames with detections.
+Builds a demonstration evidence summary:
+- Frames with detections; total inspected frames only if independently supplied.
 - Per-class counts and confidence statistics.
 - Top five highest-confidence detections per class.
-- Compliance status: **PASS** or **FAIL**.
+- Missing evidence and human-review limitations, not a compliance determination.
 
 ### Agent 4 — Ticketing Agent
 
-Synthesises outputs from Policy and Analysis agents. Produces a structured JSON maintenance ticket:
+Synthesises outputs from Policy and Analysis agents. An example fallback ticket:
 
 ```json
 {
+  "mode": "fallback",
+  "ticket_id": "TICKET-20261111000000",
   "priority": "HIGH",
-  "title": "Rupture detected in pipeline segment A3",
-  "description": "...",
-  "affected_component": "segment-A3",
-  "recommended_action": "HALT_PIPELINE",
-  "estimated_resolution_time": "4 hours",
-  "tags": "Rupture, Disconnect"
+  "summary": "2 detections found; 1 policy violations.",
+  "violations": [
+    {"label": "corrosion", "avg_confidence": 0.8, "threshold": 0.7, "action": "MONITOR"}
+  ],
+  "recommended_action": "MONITOR"
 }
 ```
+
+The external fallback agent assigns HIGH priority to any threshold crossing,
+including `gas-pipelines` context. This is a generic review flag, not a physical
+risk assessment. LLM prompts instead request LOW-priority manual review and
+prohibit shutdown, safety, and compliance claims. Neither mode is an operational
+asset-integrity assessment.
 
 ### LLM versus Fallback Mode
 
@@ -371,7 +382,7 @@ A successful response has this shape:
 
 ```json
 {
-  "answer": "Rupture detections require immediate attention ...",
+  "answer": "Corrosion candidates require qualified human review; confidence does not establish physical severity ...",
   "mode": "combined",
   "query": {
     "operation": "group_by",
@@ -467,7 +478,7 @@ curl http://localhost:8080/api/agents/results/$RUN_ID | python3 -m json.tool
 | UI shows no runs | `curl http://localhost:8080/api/detection/runs` and `curl http://localhost:8080/api/agents/runs` — is the NGINX proxy, detection-service, or agent-service reachable? |
 | LLM/OpenVINO model server service is unhealthy | Use `LLM_MODE=fallback` to bypass the LLM service for testing |
 | `apm-storage` unhealthy | `docker logs apm-storage` and `curl http://localhost:8080/api/storage/health` |
-| `apm-agent` unhealthy or unreachable | `docker logs apm-agent` — it is an externally pulled image (not built from this repo); confirm `REGISTRY`/`TAG` resolve to a real published image |
+| `apm-agent` unhealthy or unreachable | `docker logs apm-agent` — it is an externally pulled image (not built from this repo); confirm `REGISTRY`/`AGENT_QUALITY_HANDLER_TAG` resolve to a real published image |
 
 For data preparation (creating a source video under `resources/videos/`):
 
